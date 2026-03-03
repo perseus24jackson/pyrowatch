@@ -48,13 +48,13 @@ React Dashboard             ← Interactive map, charts, hotspot list
 
 ---
 
-## 🚀 STEP-BY-STEP IMPLEMENTATION
+ STEP-BY-STEP IMPLEMENTATION
 
 ---
 
-### PHASE 1: Environment Setup (Day 1)
+ PHASE 1: Environment Setup (Day 1)
 
-#### 1.1 Create Python Virtual Environment
+ 1.1 Create Python Virtual Environment
 ```bash
 python -m venv wildfire_env
 source wildfire_env/bin/activate       # Linux/Mac
@@ -65,30 +65,30 @@ pip install fastapi uvicorn torch torchvision scikit-learn \
             python-dotenv redis sqlalchemy pydantic
 ```
 
-#### 1.2 Create .env file
+ 1.2 Create .env file
 ```env
 NASA_FIRMS_KEY=your_key_here
 OPENWEATHER_KEY=your_key_here
 ```
 
-#### 1.3 Get Free API Keys
+ 1.3 Get Free API Keys
 
-**NASA FIRMS (Most important):**
+NASA FIRMS :
 1. Go to: https://firms.modaps.eosdis.nasa.gov/api/area/
 2. Click "Get MAP_KEY" — free, instant
 3. Returns real-time satellite fire CSV data
 4. Covers: MODIS Terra, MODIS Aqua, VIIRS S-NPP, VIIRS NOAA-20
 
-**OpenWeatherMap (Weather data):**
+OpenWeatherMap (Weather data):
 1. Go to: https://openweathermap.org/api
 2. Sign up → API keys → Copy key
 3. 1000 free calls/day on free tier
 
 ---
 
-### PHASE 2: Backend Development (Day 2–4)
+PHASE 2: Backend Development (Day 2–4)
 
-#### 2.1 Project Folder Structure
+ 2.1 Project Folder Structure
 ```
 wildfire/
 ├── backend/
@@ -106,7 +106,7 @@ wildfire/
     └── exploration.ipynb    ← EDA and model development
 ```
 
-#### 2.2 Start the API Server
+ 2.2 Start the API Server
 ```bash
 cd wildfire/backend
 python backend.py --server
@@ -122,7 +122,7 @@ http://localhost:8000/fires    ← Live fire hotspots
 http://localhost:8000/stats    ← Risk statistics
 ```
 
-#### 2.3 Train the ML Model
+ 2.3 Train the ML Model
 ```bash
 python backend.py --train
 # Creates: models/wildfire_cnn.pt
