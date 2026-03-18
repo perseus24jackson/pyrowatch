@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<title>PyroWatch — Live Earth Fire Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --fire:#ff3300;--orange:#ff6600;--gold:#ffcc00;
+  --blue:#0088ff;--teal:#00ffcc;--purple:#8844ff;
+  --bg:#000008;--panel:rgba(0,10,30,0.85);
+  --border:rgba(0,160,255,0.25);--text:#e0f0ff;
+}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg)}
+body{font-family:'Rajdhani',sans-serif;color:var(--text)}
+#app{width:100vw;height:100vh;position:relative}
+
+/* ── Canvas ── */
+#mainCanvas{width:100%;height:100%;display:block}
+
+/* ── Loading screen ── */
+#loader{position:absolute;inset:0;background:#000010;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;z-index:1000;transition:opacity 1s}
+#loader.hidden{opacity:0;pointer-events:none}
+.loader-logo{font-family:'Orbitron',monospace;font-size:36px;font-weight:900;
+  color:#ff4400;letter-spacing:6px;text-shadow:0 0 30px #ff4400,0 0 60px #ff2200}
+.loader-sub{font-size:11px;color:#4488aa;letter-spacing:4px;margin-top:8px}
+.loader-bar-wrap{width:300px;height:3px;background:rgba(0,100,200,0.2);
+  border-radius:2px;margin-top:30px;overflow:hidden}
+.loader-bar{height:100%;background:linear-gradient(90deg,#ff4400,#ff8800);
+  border-radius:2px;animation:loadAnim 3s ease-in-out forwards}
+@keyframes loadAnim{0%{width:0}100%{width:100%}}
+.loader-status{font-size:10px;color:#336688;letter-spacing:2px;margin-top:12px}
+
+/* ── HUD ── */
+#hud{position:absolute;inset:0;pointer-events:none;z-index:10}
+
+/* Top bar */
+#topbar{position:absolute;top:0;left:0;right:0;height:56px;
+  background:linear-gradient(180deg,rgba(0,5,20,0.95) 0%,transparent 100%);
+  display:flex;align-items:center;justify-content:space-between;padding:0 20px;
+  border-bottom:1px solid rgba(0,160,255,0.1)}
+.logo-wrap{display:flex;align-items:center;gap:12px}
+.logo-icon{width:38px;height:38px;border-radius:8px;
+  background:linear-gradient(135deg,#ff4500,#ff9000);
+  display:flex;align-items:center;justify-content:center;font-size:20px;
+  box-shadow:0 0 20px rgba(255,80,0,0.5)}
+.logo-name{font-family:'Orbitron',monospace;font-size:16px;font-weight:900;
+  letter-spacing:4px;color:#fff}
+.logo-sub{font-size:8px;color:#ff8040;letter-spacing:3px}
+.header-center{display:flex;gap:6px}
+.nav-btn{padding:6px 16px;background:rgba(0,120,255,0.08);border:1px solid rgba(0,120,255,0.2);
+  border-radius:5px;color:#80c0ff;font-size:9px;letter-spacing:2px;cursor:pointer;
+  font-family:'Orbitron',monospace;transition:all 0.2s;pointer-events:all}
+.nav-btn:hover,.nav-btn.active{background:rgba(0,120,255,0.2);border-color:rgba(0,120,255,0.5);color:#fff}
+.header-right{display:flex;align-items:center;gap:14px}
+.live-pill{display:flex;align-items:center;gap:7px;background:rgba(255,40,40,0.1);
+  border:1px solid rgba(255,40,40,0.3);border-radius:20px;padding:4px 14px;
+  color:#ff5050;font-size:9px;letter-spacing:1px}
+.live-dot{width:6px;height:6px;border-radius:50%;background:#ff3030;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.3;transform:scale(1.6)}}
+.utc-clock{font-family:'Orbitron',monospace;font-size:10px;color:#446688;letter-spacing:1px}
+
+/* Search panel */
+#searchPanel{position:absolute;top:70px;left:50%;transform:translateX(-50%);
+  width:420px;pointer-events:all;z-index:20}
+.search-box{display:flex;gap:8px;background:rgba(0,10,30,0.9);
+  border:1px solid rgba(0,160,255,0.3);border-radius:10px;padding:8px 12px;
+  backdrop-filter:blur(12px)}
+#coordInput{flex:1;background:transparent;border:none;outline:none;
+  color:#fff;font-family:'Orbitron',monospace;font-size:11px;letter-spacing:1px}
+#coordInput::placeholder{color:#334466}
+.search-btn{padding:5px 14px;background:rgba(255,80,20,0.2);border:1px solid rgba(255,80,20,0.4);
+  border-radius:6px;color:#ff8040;font-size:9px;cursor:pointer;font-family:'Orbitron',monospace;
+  transition:all 0.2s}
+.search-btn:hover{background:rgba(255,80,20,0.4)}
+.quick-coords{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;justify-content:center}
+.qcoord{padding:3px 10px;background:rgba(0,80,160,0.15);border:1px solid rgba(0,120,255,0.2);
+  border-radius:4px;color:#80aaff;font-size:8px;cursor:pointer;transition:all 0.2s}
+.qcoord:hover{background:rgba(0,80,160,0.3);color:#fff}
+
+/* Left panel — satellite info */
+#leftPanel{position:absolute;left:16px;top:80px;width:230px;pointer-events:all}
+.panel-card{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;overflow:hidden;margin-bottom:10px;backdrop-filter:blur(10px)}
+.panel-head{padding:8px 14px;background:rgba(0,100,200,0.1);
+  border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.panel-title{font-size:8px;letter-spacing:3px;color:#80c0ff;font-family:'Orbitron',monospace}
+.panel-body{padding:12px 14px}
+.sat-item{display:flex;align-items:center;gap:10px;padding:6px 0;
+  border-bottom:1px solid rgba(0,80,160,0.1);cursor:pointer;transition:all 0.2s}
+.sat-item:hover{opacity:0.8}
+.sat-item:last-child{border-bottom:none}
+.sat-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.sat-name{font-size:10px;color:#aaccee}
+.sat-alt{font-size:9px;color:#446688;margin-left:auto}
+.sat-active{border:1px solid rgba(0,200,255,0.3)!important;background:rgba(0,100,200,0.1)}
+
+/* Right panel — metrics */
+#rightPanel{position:absolute;right:16px;top:80px;width:240px;pointer-events:all}
+.metric-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;
+  border-bottom:1px solid rgba(0,80,160,0.08)}
+.metric-label{font-size:9px;color:#446688;letter-spacing:1px}
+.metric-val{font-size:12px;font-weight:700;font-family:'Orbitron',monospace}
+.bar-wrap{height:3px;background:rgba(255,255,255,0.06);border-radius:2px;
+  margin-top:3px;overflow:hidden}
+.bar-fill{height:100%;border-radius:2px;transition:width 0.8s ease}
+
+/* Risk gauge */
+.gauge-wrap{display:flex;flex-direction:column;align-items:center;padding:8px 0}
+.gauge-label{font-size:8px;color:#446688;letter-spacing:2px;margin-top:6px}
+.risk-badge{padding:4px 16px;border-radius:5px;font-size:9px;letter-spacing:2px;
+  font-family:'Orbitron',monospace;margin-top:5px}
+
+/* Weather widget */
+.weather-row{display:flex;align-items:center;gap:10px;padding:5px 0}
+.weather-icon{font-size:22px}
+.weather-temp{font-size:22px;font-weight:700;color:#fff}
+.weather-desc{font-size:9px;color:#446688}
+
+/* Alert banner */
+#alertBanner{position:absolute;top:68px;left:50%;transform:translateX(-50%);
+  background:rgba(255,20,0,0.12);border:1px solid rgba(255,20,0,0.4);
+  border-radius:8px;padding:7px 20px;color:#ff4040;font-size:10px;letter-spacing:1px;
+  display:none;pointer-events:none;white-space:nowrap;backdrop-filter:blur(8px)}
+
+/* Weather mode buttons */
+#weatherModes{position:absolute;bottom:140px;right:16px;pointer-events:all}
+.wmode-btn{display:flex;align-items:center;gap:8px;padding:6px 14px;
+  background:rgba(0,10,30,0.85);border:1px solid rgba(0,100,200,0.2);
+  border-radius:6px;color:#80aacc;font-size:9px;cursor:pointer;
+  font-family:'Orbitron',monospace;margin-bottom:5px;transition:all 0.2s;
+  backdrop-filter:blur(8px)}
+.wmode-btn:hover{border-color:rgba(0,160,255,0.5);color:#fff}
+.wmode-btn.active{border-color:var(--fire);color:var(--fire);background:rgba(255,50,0,0.1)}
+
+/* Bottom controls */
+#bottomControls{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);
+  pointer-events:all;display:flex;gap:8px;align-items:center;
+  background:rgba(0,5,20,0.85);border:1px solid rgba(0,100,200,0.2);
+  border-radius:10px;padding:10px 16px;backdrop-filter:blur(10px)}
+.ctrl-group{display:flex;flex-direction:column;gap:3px}
+.ctrl-label{font-size:8px;color:#336688;letter-spacing:1px}
+.ctrl-row{display:flex;align-items:center;gap:8px}
+input[type=range]{width:90px;accent-color:#ff6030;cursor:pointer}
+.ctrl-val{font-size:10px;color:#ff8040;font-family:'Orbitron',monospace;min-width:42px}
+.ctrl-sep{width:1px;height:40px;background:rgba(0,100,200,0.2);margin:0 4px}
+.action-btn{padding:6px 14px;background:rgba(255,80,20,0.15);
+  border:1px solid rgba(255,80,20,0.35);border-radius:6px;
+  color:#ff8040;font-size:9px;cursor:pointer;font-family:'Orbitron',monospace;
+  transition:all 0.2s;white-space:nowrap}
+.action-btn:hover{background:rgba(255,80,20,0.3);border-color:#ff6030}
+.action-btn.danger{color:#ff3030;border-color:rgba(255,20,0,0.4)}
+.action-btn.danger:hover{background:rgba(255,20,0,0.2)}
+
+/* Minimap */
+#minimap{position:absolute;bottom:130px;left:16px;pointer-events:all}
+#minimapCanvas{border:1px solid rgba(0,100,200,0.3);border-radius:6px;cursor:crosshair}
+
+/* Tooltip */
+#tooltip{position:absolute;pointer-events:none;background:rgba(0,5,25,0.92);
+  border:1px solid rgba(0,160,255,0.3);border-radius:6px;padding:6px 12px;
+  font-size:10px;color:#80c0ff;display:none;white-space:nowrap;backdrop-filter:blur(8px)}
+
+/* Mode overlay text */
+#modeText{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  font-family:'Orbitron',monospace;font-size:11px;color:rgba(0,160,255,0.4);
+  letter-spacing:3px;pointer-events:none;display:none}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="mainCanvas"></canvas>
+
+  <!-- Loading -->
+  <div id="loader">
+    <div class="loader-logo">PYROWATCH</div>
+    <div class="loader-sub">LIVE EARTH FIRE INTELLIGENCE SYSTEM</div>
+    <div class="loader-bar-wrap"><div class="loader-bar"></div></div>
+    <div class="loader-status" id="loaderStatus">INITIALIZING SOLAR SYSTEM...</div>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <!-- Top bar -->
+    <div id="topbar">
+      <div class="logo-wrap">
+        <div class="logo-icon">🔥</div>
+        <div>
+          <div class="logo-name">PYROWATCH</div>
+          <div class="logo-sub">LIVE EARTH INTELLIGENCE · NASA FIRMS · MODIS · VIIRS</div>
+        </div>
+      </div>
+      <div class="header-center">
+        <div class="nav-btn active" id="navSolar" onclick="setView('solar')">SOLAR SYSTEM</div>
+        <div class="nav-btn" id="navEarth" onclick="setView('earth')">EARTH VIEW</div>
+        <div class="nav-btn" id="navTerrain" onclick="setView('terrain')">TERRAIN</div>
+        <div class="nav-btn" id="navAnalysis" onclick="setView('analysis')">ANALYSIS</div>
+      </div>
+      <div class="header-right">
+        <div class="utc-clock" id="utcClock">00:00:00 UTC</div>
+        <div class="live-pill"><div class="live-dot"></div>LIVE FEED</div>
+      </div>
+    </div>
+
+    <!-- Alert -->
+    <div id="alertBanner">⚠ EXTREME FIRE RISK — IMMEDIATE RESPONSE REQUIRED</div>
+
+    <!-- Search -->
+    <div id="searchPanel">
+      <div class="search-box">
+        <span style="color:#446688;font-size:11px;padding-top:2px">📍</span>
+        <input id="coordInput" type="text" placeholder="Enter coordinates or location name  e.g. 33.45, -112.07"/>
+        <div class="search-btn" onclick="searchCoords()">FLY TO</div>
+      </div>
+      <div class="quick-coords">
+        <div class="qcoord" onclick="flyTo(33.45,-112.07,'Phoenix AZ')">Phoenix AZ</div>
+        <div class="qcoord" onclick="flyTo(36.74,-119.77,'Central Valley CA')">Central Valley</div>
+        <div class="qcoord" onclick="flyTo(34.05,-118.24,'Los Angeles CA')">Los Angeles</div>
+        <div class="qcoord" onclick="flyTo(30.26,-97.74,'Austin TX')">Austin TX</div>
+        <div class="qcoord" onclick="flyTo(28.61,77.20,'New Delhi')">New Delhi</div>
+        <div class="qcoord" onclick="flyTo(-33.86,151.20,'Sydney')">Sydney</div>
+      </div>
+    </div>
+
+    <!-- Left — satellites -->
+    <div id="leftPanel">
+      <div class="panel-card">
+        <div class="panel-head">
+          <span class="panel-title">ACTIVE SATELLITES</span>
+          <span style="font-size:8px;color:#ff8040" id="satCount">4 ORBITING</span>
+        </div>
+        <div class="panel-body">
+          <div class="sat-item sat-active" onclick="selectSat(0)">
+            <div class="sat-dot" style="background:#ff4400;box-shadow:0 0 6px #ff4400"></div>
+            <div><div class="sat-name">MODIS/VIIRS</div><div style="font-size:8px;color:#446688">NASA FIRMS FIRE</div></div>
+            <div class="sat-alt">705 km</div>
+          </div>
+          <div class="sat-item" onclick="selectSat(1)">
+            <div class="sat-dot" style="background:#00ffaa;box-shadow:0 0 6px #00ffaa"></div>
+            <div><div class="sat-name">ISS</div><div style="font-size:8px;color:#446688">INT. SPACE STATION</div></div>
+            <div class="sat-alt">408 km</div>
+          </div>
+          <div class="sat-item" onclick="selectSat(2)">
+            <div class="sat-dot" style="background:#4488ff;box-shadow:0 0 6px #4488ff"></div>
+            <div><div class="sat-name">LANDSAT 9</div><div style="font-size:8px;color:#446688">TERRAIN IMAGING</div></div>
+            <div class="sat-alt">705 km</div>
+          </div>
+          <div class="sat-item" onclick="selectSat(3)">
+            <div class="sat-dot" style="background:#aa44ff;box-shadow:0 0 6px #aa44ff"></div>
+            <div><div class="sat-name">SENTINEL-2</div><div style="font-size:8px;color:#446688">ESA MULTISPECTRAL</div></div>
+            <div class="sat-alt">786 km</div>
+          </div>
+        </div>
+      </div>
+      <!-- Planet list -->
+      <div class="panel-card">
+        <div class="panel-head"><span class="panel-title">SOLAR SYSTEM</span></div>
+        <div class="panel-body" id="planetList"></div>
+      </div>
+    </div>
+
+    <!-- Right — metrics -->
+    <div id="rightPanel">
+      <div class="panel-card">
+        <div class="panel-head">
+          <span class="panel-title">FIRE RISK ANALYSIS</span>
+          <span style="font-size:8px;color:#446688" id="coordDisplay">--°N --°E</span>
+        </div>
+        <div class="panel-body">
+          <div class="gauge-wrap">
+            <canvas id="gaugeCanvas" width="140" height="80"></canvas>
+            <div class="gauge-label">RISK SCORE</div>
+            <div class="risk-badge" id="riskBadge">--</div>
+          </div>
+          <div id="metricsBody"></div>
+        </div>
+      </div>
+      <div class="panel-card">
+        <div class="panel-head"><span class="panel-title">WEATHER CONDITIONS</span></div>
+        <div class="panel-body" id="weatherBody">
+          <div style="color:#224455;font-size:9px;text-align:center;padding:10px 0">SELECT A LOCATION</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Weather mode buttons -->
+    <div id="weatherModes">
+      <div class="wmode-btn active" id="wFire" onclick="setWeather('fire')">🔥 WILDFIRE</div>
+      <div class="wmode-btn" id="wStorm" onclick="setWeather('storm')">⚡ THUNDERSTORM</div>
+      <div class="wmode-btn" id="wSnow" onclick="setWeather('snow')">❄ BLIZZARD</div>
+      <div class="wmode-btn" id="wFlood" onclick="setWeather('flood')">🌊 FLOOD</div>
+      <div class="wmode-btn" id="wNormal" onclick="setWeather('normal')">🌤 CLEAR</div>
+    </div>
+
+    <!-- Bottom controls -->
+    <div id="bottomControls">
+      <div class="ctrl-group">
+        <div class="ctrl-label">WIND SPEED</div>
+        <div class="ctrl-row">
+          <input type="range" id="windR" min="0" max="120" value="45" step="1" oninput="updateEnv()">
+          <span class="ctrl-val" id="windV">45 km/h</span>
+        </div>
+      </div>
+      <div class="ctrl-sep"></div>
+      <div class="ctrl-group">
+        <div class="ctrl-label">HUMIDITY</div>
+        <div class="ctrl-row">
+          <input type="range" id="humR" min="0" max="100" value="18" step="1" oninput="updateEnv()">
+          <span class="ctrl-val" id="humV">18%</span>
+        </div>
+      </div>
+      <div class="ctrl-sep"></div>
+      <div class="ctrl-group">
+        <div class="ctrl-label">TEMPERATURE</div>
+        <div class="ctrl-row">
+          <input type="range" id="tempR" min="-20" max="55" value="38" step="1" oninput="updateEnv()">
+          <span class="ctrl-val" id="tempV">38°C</span>
+        </div>
+      </div>
+      <div class="ctrl-sep"></div>
+      <div class="action-btn" onclick="igniteLocation()">IGNITE</div>
+      <div class="action-btn danger" onclick="resetSim()">RESET</div>
+      <div class="action-btn" onclick="toggleAutoSim()">AUTO SIM</div>
+    </div>
+
+    <!-- Minimap -->
+    <div id="minimap">
+      <div style="font-size:8px;color:#224455;letter-spacing:2px;margin-bottom:3px">GLOBAL VIEW</div>
+      <canvas id="minimapCanvas" width="160" height="90"></canvas>
+    </div>
+
+    <!-- Tooltip -->
+    <div id="tooltip"></div>
+    <div id="modeText"></div>
+  </div>
+</div>
+
+<!-- THREE.JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+
+<script>
+// ════════════════════════════════════════════════════════════
+//  PYROWATCH — 3D EARTH FIRE INTELLIGENCE SYSTEM
+//  Three.js + Real APIs + Procedural VFX
+// ════════════════════════════════════════════════════════════
+
+const canvas = document.getElementById('mainCanvas');
+const W = () => window.innerWidth, H = () => window.innerHeight;
+
+// ── Renderer ──────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(W(), H());
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+
+// ── Scene & Camera ───────────────────────────────────────────
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, W()/H(), 0.001, 50000);
+camera.position.set(0, 0, 8);
+
+// ── Bloom Post-processing ─────────────────────────────────────
+const composer = new THREE.EffectComposer(renderer);
+const renderPass = new THREE.RenderPass(scene, camera);
+composer.addPass(renderPass);
+const bloomPass = new THREE.UnrealBloomPass(
+  new THREE.Vector2(W(), H()), 0.8, 0.4, 0.6
+);
+composer.addPass(bloomPass);
+
+// ── Orbit Controls ────────────────────────────────────────────
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.minDistance = 1.2;
+controls.maxDistance = 5000;
+controls.autoRotate = false;
+
+window.addEventListener('resize', () => {
+  camera.aspect = W()/H();
+  camera.updateProjectionMatrix();
+  renderer.setSize(W(), H());
+  composer.setSize(W(), H());
+});
+
+// ════════════════════════════════════════════════════════════
+//  STATE
+// ════════════════════════════════════════════════════════════
+let appState = {
+  view: 'solar',      // solar | earth | terrain | analysis
+  weather: 'fire',
+  selectedLat: 33.45,
+  selectedLon: -112.07,
+  selectedName: 'Phoenix, AZ',
+  wind: 45, humidity: 18, temperature: 38,
+  simRunning: false,
+  selectedSat: 0,
+};
+
+// ════════════════════════════════════════════════════════════
+//  STARFIELD
+// ════════════════════════════════════════════════════════════
+function buildStars() {
+  const count = 15000;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(count * 3);
+  const col = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
+
+  for(let i = 0; i < count; i++) {
+    const r = 3000 + Math.random() * 7000;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    pos[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+    pos[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+    pos[i*3+2] = r * Math.cos(phi);
+
+    const t = Math.random();
+    if(t < 0.1) { col[i*3]=0.6;col[i*3+1]=0.7;col[i*3+2]=1.0; }       // blue
+    else if(t < 0.2) { col[i*3]=1.0;col[i*3+1]=0.8;col[i*3+2]=0.6; }  // warm
+    else { col[i*3]=1;col[i*3+1]=1;col[i*3+2]=1; }                     // white
+
+    sizes[i] = Math.random() < 0.02 ? 3.5 : (Math.random() < 0.1 ? 2 : 1);
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+  const mat = new THREE.ShaderMaterial({
+    vertexColors: true,
+    transparent: true,
+    vertexShader: `
+      attribute float size;
+      varying vec3 vColor;
+      void main(){
+        vColor = color;
+        vec4 mv = modelViewMatrix * vec4(position,1.0);
+        gl_PointSize = size * (300.0 / -mv.z);
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vColor;
+      void main(){
+        float d = length(gl_PointCoord - vec2(0.5));
+        if(d > 0.5) discard;
+        float a = 1.0 - smoothstep(0.2, 0.5, d);
+        gl_FragColor = vec4(vColor, a);
+      }
+    `
+  });
+  scene.add(new THREE.Points(geo, mat));
+}
+
+// ════════════════════════════════════════════════════════════
+//  MILKY WAY NEBULA BAND
+// ════════════════════════════════════════════════════════════
+function buildMilkyWay() {
+  const count = 5000;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(count * 3);
+  const col = new Float32Array(count * 3);
+  for(let i = 0; i < count; i++) {
+    const t = (i/count) * Math.PI * 2;
+    const spread = (Math.random() - 0.5) * 800;
+    const r = 4000 + (Math.random()-0.5)*500;
+    pos[i*3]   = Math.cos(t) * r + spread;
+    pos[i*3+1] = (Math.random()-0.5) * 400;
+    pos[i*3+2] = Math.sin(t) * r + spread;
+    const br = 0.15 + Math.random()*0.35;
+    col[i*3]=br*0.7;col[i*3+1]=br*0.8;col[i*3+2]=br;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const mat = new THREE.PointsMaterial({vertexColors:true,size:1.5,transparent:true,opacity:0.4});
+  scene.add(new THREE.Points(geo, mat));
+}
+
+// ════════════════════════════════════════════════════════════
+//  SUN
+// ════════════════════════════════════════════════════════════
+let sunMesh, sunGlow, sunLight;
+function buildSun() {
+  const sunGeo = new THREE.SphereGeometry(50, 32, 32);
+  const sunMat = new THREE.ShaderMaterial({
+    uniforms: { time: {value:0} },
+    vertexShader: `varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+    fragmentShader: `
+      uniform float time;
+      varying vec2 vUv;
+      float noise(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5);}
+      void main(){
+        vec2 uv=vUv*8.+time*0.1;
+        float n=noise(floor(uv))*0.4+noise(floor(uv*2.))*0.3+noise(floor(uv*4.))*0.3;
+        vec3 col=mix(vec3(1.0,0.5,0.0),vec3(1.0,0.9,0.2),n);
+        col=mix(col,vec3(1.0,1.0,0.8),pow(n,3.));
+        gl_FragColor=vec4(col,1.);
+      }
+    `
+  });
+  sunMesh = new THREE.Mesh(sunGeo, sunMat);
+  sunMesh.position.set(-800, 100, -1200);
+  scene.add(sunMesh);
+
+  // Corona glow layers
+  [120,180,260].forEach((r,i) => {
+    const g = new THREE.Mesh(
+      new THREE.SphereGeometry(r, 16, 16),
+      new THREE.MeshBasicMaterial({
+        color: i===0?0xff6600:i===1?0xff3300:0xff1100,
+        transparent:true, opacity:0.08-i*0.02,
+        side:THREE.BackSide, depthWrite:false
+      })
+    );
+    g.position.copy(sunMesh.position);
+    scene.add(g);
+  });
+
+  sunLight = new THREE.DirectionalLight(0xfff4e0, 3.0);
+  sunLight.position.copy(sunMesh.position).normalize().multiplyScalar(100);
+  sunLight.castShadow = true;
+  scene.add(sunLight);
+  scene.add(new THREE.AmbientLight(0x111133, 0.3));
+}
+
+// ════════════════════════════════════════════════════════════
+//  PLANETS
+// ════════════════════════════════════════════════════════════
+const PLANET_DATA = [
+  {name:'Mercury', r:2,   d:120,  color:0x888880, speed:0.024, tilt:0},
+  {name:'Venus',   r:5,   d:200,  color:0xffcc88, speed:0.015, tilt:0},
+  {name:'Earth',   r:6.4, d:300,  color:0x2266ff, speed:0.010, tilt:23.4},
+  {name:'Mars',    r:3.4, d:450,  color:0xff4422, speed:0.008, tilt:25.2},
+  {name:'Jupiter', r:18,  d:800,  color:0xffaa66, speed:0.004, tilt:3.1},
+  {name:'Saturn',  r:14,  d:1200, color:0xffddaa, speed:0.003, tilt:26.7},
+  {name:'Uranus',  r:8,   d:1700, color:0x88ddff, speed:0.002, tilt:97.8},
+  {name:'Neptune', r:7,   d:2200, color:0x4488ff, speed:0.001, tilt:28.3},
+];
+let planets=[], earthMesh, earthGroup, earthAtmo, earthClouds;
+let satMeshes=[], satTrails=[];
+
+function buildPlanets() {
+  PLANET_DATA.forEach((pd,i) => {
+    const geo = new THREE.SphereGeometry(pd.r, 32, 32);
+    let mat;
+
+    if(pd.name === 'Earth') {
+      mat = new THREE.MeshPhongMaterial({color:0x2266ff,specular:0x224488,shininess:40});
+      earthGroup = new THREE.Group();
+      earthMesh = new THREE.Mesh(geo, mat);
+      earthGroup.add(earthMesh);
+
+      // Ocean fresnel
+      const oceanMat = new THREE.MeshPhongMaterial({
+        color:0x1144aa,transparent:true,opacity:0.4,
+        specular:0x88ccff,shininess:120,side:THREE.FrontSide
+      });
+      earthGroup.add(new THREE.Mesh(new THREE.SphereGeometry(pd.r+0.02,32,32), oceanMat));
+
+      // Atmosphere glow
+      earthAtmo = new THREE.Mesh(
+        new THREE.SphereGeometry(pd.r+0.8, 32, 32),
+        new THREE.MeshPhongMaterial({color:0x4488ff,transparent:true,opacity:0.12,side:THREE.BackSide})
+      );
+      earthGroup.add(earthAtmo);
+
+      // Clouds
+      earthClouds = new THREE.Mesh(
+        new THREE.SphereGeometry(pd.r+0.15, 32, 32),
+        new THREE.MeshPhongMaterial({color:0xffffff,transparent:true,opacity:0.35,depthWrite:false})
+      );
+      earthGroup.add(earthClouds);
+
+      earthGroup.rotation.z = THREE.MathUtils.degToRad(23.4);
+      earthGroup.position.set(pd.d, 0, 0);
+      scene.add(earthGroup);
+    } else {
+      const colors = {
+        Saturn: 0xffddaa, Jupiter: 0xffaa66,
+        Mars:0xff4422, Venus:0xffcc88, Mercury:0x888880,
+        Uranus:0x88ddff, Neptune:0x4488ff
+      };
+      mat = new THREE.MeshPhongMaterial({
+        color: colors[pd.name]||pd.color,
+        specular:0x222222, shininess:20
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(pd.d, 0, 0);
+      mesh.rotation.z = THREE.MathUtils.degToRad(pd.tilt);
+      scene.add(mesh);
+
+      if(pd.name==='Saturn') {
+        const ringGeo = new THREE.RingGeometry(pd.r*1.4, pd.r*2.4, 64);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color:0xccaa88,transparent:true,opacity:0.6,
+          side:THREE.DoubleSide,depthWrite:false
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.rotation.x = Math.PI/2.5;
+        ring.position.copy(mesh.position);
+        scene.add(ring);
+      }
+
+      // Orbit ring
+      const orbitGeo = new THREE.RingGeometry(pd.d-0.3, pd.d+0.3, 128);
+      const orbitMat = new THREE.MeshBasicMaterial({
+        color:0x223344,transparent:true,opacity:0.25,
+        side:THREE.DoubleSide,depthWrite:false
+      });
+      const orbitRing = new THREE.Mesh(orbitGeo, orbitMat);
+      orbitRing.rotation.x = Math.PI/2;
+      scene.add(orbitRing);
+
+      planets.push({mesh, data:pd, angle:Math.random()*Math.PI*2});
+    }
+  });
+
+  // Build planet list UI
+  const pl = document.getElementById('planetList');
+  pl.innerHTML = '';
+  PLANET_DATA.forEach(pd => {
+    const d = document.createElement('div');
+    d.style.cssText='display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer';
+    d.innerHTML=`<div style="width:10px;height:10px;border-radius:50%;background:#${pd.color.toString(16).padStart(6,'0')}"></div>
+      <span style="font-size:10px;color:#aaccee">${pd.name}</span>
+      <span style="font-size:9px;color:#224455;margin-left:auto">${pd.d} AU</span>`;
+    pl.appendChild(d);
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+//  SATELLITES
+// ════════════════════════════════════════════════════════════
+const SAT_DATA = [
+  {name:'MODIS/VIIRS', alt:1.11, inc:98,  color:0xff4400, period:5500, phase:0},
+  {name:'ISS',         alt:1.064,inc:51.6,color:0x00ffaa, period:5550, phase:1.2},
+  {name:'Landsat 9',   alt:1.11, inc:98.2,color:0x4488ff, period:5890, phase:2.4},
+  {name:'Sentinel-2',  alt:1.123,inc:98.6,color:0xaa44ff, period:6020, phase:3.8},
+];
+
+function buildSatellites() {
+  satMeshes=[]; satTrails=[];
+  SAT_DATA.forEach((sd,i) => {
+    const geo = new THREE.SphereGeometry(0.04, 8, 8);
+    const mat = new THREE.MeshBasicMaterial({color:sd.color});
+    const mesh = new THREE.Mesh(geo, mat);
+    scene.add(mesh);
+
+    // Glow
+    const glowMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.1,8,8),
+      new THREE.MeshBasicMaterial({color:sd.color,transparent:true,opacity:0.3,depthWrite:false})
+    );
+    scene.add(glowMesh);
+
+    // Trail
+    const trailGeo = new THREE.BufferGeometry();
+    const trailPos = new Float32Array(200*3);
+    trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPos,3));
+    const trailMat = new THREE.LineBasicMaterial({color:sd.color,transparent:true,opacity:0.3});
+    const trail = new THREE.Line(trailGeo, trailMat);
+    scene.add(trail);
+
+    satMeshes.push({mesh, glow:glowMesh, trail, trailPos, trailIdx:0, data:sd});
+  });
+}
+
+function updateSatellites(t) {
+  const earthPos = earthGroup ? earthGroup.position : new THREE.Vector3(300,0,0);
+  satMeshes.forEach((s,i) => {
+    const sd = s.data;
+    const angle = (t/sd.period)*Math.PI*2 + sd.phase;
+    const incRad = THREE.MathUtils.degToRad(sd.inc);
+    const r = sd.alt * (PLANET_DATA[2].r + 0.7);
+    const x = r * Math.cos(angle);
+    const y = r * Math.sin(angle) * Math.sin(incRad);
+    const z = r * Math.sin(angle) * Math.cos(incRad);
+    const pos = earthPos.clone().add(new THREE.Vector3(x,y,z));
+    s.mesh.position.copy(pos);
+    s.glow.position.copy(pos);
+
+    // Update trail
+    const tp = s.trailPos;
+    for(let j=tp.length-3;j>=3;j-=3){tp[j]=tp[j-3];tp[j+1]=tp[j-2];tp[j+2]=tp[j-1];}
+    tp[0]=pos.x;tp[1]=pos.y;tp[2]=pos.z;
+    s.trail.geometry.attributes.position.needsUpdate=true;
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+//  EARTH (detailed close-up view)
+// ════════════════════════════════════════════════════════════
+function buildDetailedEarth() {
+  if(!earthMesh) return;
+  // Add land masses via vertex colors
+  const geo = earthMesh.geometry;
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count*3);
+  for(let i=0;i<pos.count;i++){
+    const v=new THREE.Vector3(pos.getX(i),pos.getY(i),pos.getZ(i)).normalize();
+    const lat=Math.asin(v.y)*180/Math.PI;
+    const lon=Math.atan2(v.z,v.x)*180/Math.PI;
+    const isLand=isLandApprox(lat,lon);
+    if(isLand){colors[i*3]=0.18;colors[i*3+1]=0.32;colors[i*3+2]=0.08;}
+    else{colors[i*3]=0.05;colors[i*3+1]=0.18;colors[i*3+2]=0.45;}
+  }
+  geo.setAttribute('color',new THREE.BufferAttribute(colors,3));
+  earthMesh.material = new THREE.MeshPhongMaterial({
+    vertexColors:true,specular:0x224466,shininess:60
+  });
+  geo.attributes.color.needsUpdate=true;
+}
+
+function isLandApprox(lat,lon){
+  if(lon>-125&&lon<-60&&lat>25&&lat<50) return true;   // North America
+  if(lon>-20&&lon<60&&lat>35&&lat<70)  return true;   // Europe
+  if(lon>60&&lon<150&&lat>10&&lat<55)  return true;   // Asia
+  if(lon>-20&&lon<55&&lat>-35&&lat<37) return true;   // Africa
+  if(lon>110&&lon<155&&lat>-45&&lat<-10) return true; // Australia
+  if(lon>-82&&lon<-35&&lat>-55&&lat<12) return true;  // S America
+  return false;
+}
+
+// ════════════════════════════════════════════════════════════
+//  WEATHER VFX SYSTEMS
+// ════════════════════════════════════════════════════════════
+let weatherParticles=[], weatherGroup=new THREE.Group();
+scene.add(weatherGroup);
+
+function clearWeather(){
+  while(weatherGroup.children.length) weatherGroup.remove(weatherGroup.children[0]);
+  weatherParticles=[];
+}
+
+function buildFireVFX(pos){
+  clearWeather();
+  const count=2000;
+  const geo=new THREE.BufferGeometry();
+  const p=new Float32Array(count*3),v=new Float32Array(count*3),lf=new Float32Array(count);
+  for(let i=0;i<count;i++){
+    p[i*3]=(Math.random()-0.5)*0.3;p[i*3+1]=Math.random()*0.1;p[i*3+2]=(Math.random()-0.5)*0.3;
+    v[i*3]=(Math.random()-0.5)*0.004;v[i*3+1]=0.008+Math.random()*0.012;v[i*3+2]=(Math.random()-0.5)*0.004;
+    lf[i]=Math.random();
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+  geo.setAttribute('velocity',new THREE.BufferAttribute(v,3));
+  geo.setAttribute('life',new THREE.BufferAttribute(lf,1));
+  const mat=new THREE.ShaderMaterial({
+    transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+    vertexShader:`
+      attribute vec3 velocity;attribute float life;varying float vLife;
+      void main(){vLife=life;vec4 mv=modelViewMatrix*vec4(position,1.);
+      gl_PointSize=max(1.,8.*(1.-life)*(300./-mv.z));gl_Position=projectionMatrix*mv;}
+    `,
+    fragmentShader:`
+      varying float vLife;
+      void main(){
+        float d=length(gl_PointCoord-vec2(.5));
+        if(d>.5)discard;
+        float a=(1.-vLife)*(1.-d*2.)*0.9;
+        vec3 c=mix(vec3(1.,.9,.2),mix(vec3(1.,.4,0.),vec3(.8,.05,0.),vLife),vLife);
+        gl_FragColor=vec4(c,a);
+      }
+    `
+  });
+  const pts=new THREE.Points(geo,mat);
+  pts.position.copy(pos);
+  weatherGroup.add(pts);
+  weatherParticles.push({pts,geo,pos:geo.attributes.position.array,vel:v,life:lf,type:'fire'});
+
+  // Smoke
+  const sg=new THREE.BufferGeometry();
+  const sp=new Float32Array(400*3);
+  for(let i=0;i<400;i++){sp[i*3]=(Math.random()-.5)*.2;sp[i*3+1]=.1+Math.random()*.5;sp[i*3+2]=(Math.random()-.5)*.2;}
+  sg.setAttribute('position',new THREE.BufferAttribute(sp,3));
+  const sm=new THREE.PointsMaterial({color:0x332211,transparent:true,opacity:.08,size:.04,depthWrite:false});
+  const spts=new THREE.Points(sg,sm);
+  spts.position.copy(pos);
+  weatherGroup.add(spts);
+}
+
+function buildStormVFX(pos){
+  clearWeather();
+  const count=3000;
+  const geo=new THREE.BufferGeometry();
+  const p=new Float32Array(count*3);
+  for(let i=0;i<count;i++){p[i*3]=(Math.random()-.5)*.8;p[i*3+1]=Math.random()*.6;p[i*3+2]=(Math.random()-.5)*.8;}
+  geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+  const mat=new THREE.PointsMaterial({color:0xaaddff,transparent:true,opacity:.25,size:.005,depthWrite:false});
+  const pts=new THREE.Points(geo,mat);
+  pts.position.copy(pos);
+  weatherGroup.add(pts);
+  weatherParticles.push({pts,geo,pos:geo.attributes.position.array,type:'rain',vel:null});
+
+  // Lightning bolt (line)
+  const lg=new THREE.BufferGeometry();
+  lg.setAttribute('position',new THREE.BufferAttribute(new Float32Array([0,.4,0,0,.1,0]),3));
+  const lm=new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:0.9});
+  const lt=new THREE.Line(lg,lm);
+  lt.position.copy(pos);
+  weatherGroup.add(lt);
+  weatherParticles.push({lt,type:'lightning',timer:0});
+}
+
+function buildSnowVFX(pos){
+  clearWeather();
+  const count=2000;
+  const geo=new THREE.BufferGeometry();
+  const p=new Float32Array(count*3);
+  for(let i=0;i<count;i++){p[i*3]=(Math.random()-.5)*.8;p[i*3+1]=Math.random()*.6;p[i*3+2]=(Math.random()-.5)*.8;}
+  geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+  const mat=new THREE.PointsMaterial({color:0xffffff,transparent:true,opacity:.6,size:.006,depthWrite:false});
+  const pts=new THREE.Points(geo,mat);
+  pts.position.copy(pos);
+  weatherGroup.add(pts);
+  weatherParticles.push({pts,geo,pos:geo.attributes.position.array,type:'snow'});
+}
+
+function buildFloodVFX(pos){
+  clearWeather();
+  const plane=new THREE.Mesh(
+    new THREE.PlaneGeometry(0.8,0.8,16,16),
+    new THREE.MeshPhongMaterial({color:0x224488,transparent:true,opacity:0.55,shininess:80})
+  );
+  plane.rotation.x=-Math.PI/2;
+  plane.position.copy(pos);
+  plane.position.y+=0.02;
+  weatherGroup.add(plane);
+  weatherParticles.push({plane,type:'flood'});
+}
+
+function updateWeatherParticles(t){
+  weatherParticles.forEach(wp=>{
+    if(wp.type==='fire'){
+      const p=wp.pos,v=wp.vel,lf=wp.life;
+      for(let i=0;i<p.length/3;i++){
+        lf[i]+=0.008;
+        if(lf[i]>1){lf[i]=0;p[i*3]=(Math.random()-.5)*.3;p[i*3+1]=0;p[i*3+2]=(Math.random()-.5)*.3;}
+        p[i*3]+=v[i*3];p[i*3+1]+=v[i*3+1];p[i*3+2]+=v[i*3+2];
+        v[i*3]+=(Math.random()-.5)*.0002;
+      }
+      wp.geo.attributes.position.needsUpdate=true;
+      wp.geo.attributes.life.needsUpdate=true;
+    }else if(wp.type==='rain'){
+      const p=wp.pos;
+      for(let i=0;i<p.length/3;i++){
+        p[i*3+1]-=0.012;
+        if(p[i*3+1]<0){p[i*3+1]=0.6;p[i*3]=(Math.random()-.5)*.8;p[i*3+2]=(Math.random()-.5)*.8;}
+      }
+      wp.geo.attributes.position.needsUpdate=true;
+    }else if(wp.type==='snow'){
+      const p=wp.pos;
+      for(let i=0;i<p.length/3;i++){
+        p[i*3+1]-=0.003;p[i*3]+=Math.sin(t+i)*.0008;
+        if(p[i*3+1]<0){p[i*3+1]=0.6;}
+      }
+      wp.geo.attributes.position.needsUpdate=true;
+    }else if(wp.type==='lightning'){
+      wp.timer+=0.016;
+      if(wp.lt&&wp.timer>0.5){
+        wp.lt.material.opacity=Math.random()<0.1?1:0;
+        if(wp.lt.material.opacity>0.5)wp.timer=0;
+      }
+    }else if(wp.type==='flood'){
+      if(wp.plane){
+        const verts=wp.plane.geometry.attributes.position.array;
+        for(let i=0;i<verts.length;i+=3)verts[i+1]=Math.sin(t*2+i)*.008;
+        wp.plane.geometry.attributes.position.needsUpdate=true;
+      }
+    }
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+//  FIRE HOTSPOT MARKERS ON EARTH
+// ════════════════════════════════════════════════════════════
+const FIRE_DATA=[
+  {lat:33.45,lon:-112.07,risk:83,frp:35,name:'Phoenix AZ'},
+  {lat:36.74,lon:-119.77,risk:73,frp:41,name:'Central Valley'},
+  {lat:34.05,lon:-118.24,risk:64,frp:28,name:'Los Angeles'},
+  {lat:30.26,lon:-97.74, risk:56,frp:23,name:'Austin TX'},
+  {lat:37.33,lon:-122.03,risk:44,frp:20,name:'Bay Area'},
+];
+let hotspotMeshes=[];
+
+function latLonToVec3(lat,lon,r){
+  const phi=THREE.MathUtils.degToRad(90-lat);
+  const theta=THREE.MathUtils.degToRad(lon+180);
+  return new THREE.Vector3(
+    r*Math.sin(phi)*Math.cos(theta),
+    r*Math.cos(phi),
+    r*Math.sin(phi)*Math.sin(theta)
+  );
+}
+
+function buildFireHotspots(){
+  if(!earthGroup) return;
+  const er=PLANET_DATA[2].r;
+  hotspotMeshes=[];
+  FIRE_DATA.forEach(f=>{
+    const pos=latLonToVec3(f.lat,f.lon,er+0.12);
+    const col=f.risk>=75?0xff1a0a:f.risk>=55?0xff6600:f.risk>=35?0xf5c518:0x22c55e;
+    const geo=new THREE.SphereGeometry(0.05+f.frp/1000,8,8);
+    const mat=new THREE.MeshBasicMaterial({color:col});
+    const mesh=new THREE.Mesh(geo,mat);
+    mesh.position.copy(pos);
+    earthGroup.add(mesh);
+
+    // Pulse ring
+    const rg=new THREE.RingGeometry(0.08,0.1,16);
+    const rm=new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.5,side:THREE.DoubleSide});
+    const ring=new THREE.Mesh(rg,rm);
+    ring.position.copy(pos);
+    ring.lookAt(earthGroup.position);
+    earthGroup.add(ring);
+    hotspotMeshes.push({mesh,ring,data:f,phase:Math.random()*Math.PI*2});
+  });
+}
+
+function updateHotspots(t){
+  hotspotMeshes.forEach(h=>{
+    const pulse=Math.sin(t*3+h.phase)*0.3+0.7;
+    h.ring.scale.setScalar(1+pulse*0.5);
+    h.ring.material.opacity=0.6*(1-pulse*0.4);
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+//  VIEWS / NAVIGATION
+// ════════════════════════════════════════════════════════════
+let currentWeatherPos=null;
+
+function setView(v){
+  appState.view=v;
+  ['navSolar','navEarth','navTerrain','navAnalysis'].forEach(id=>{
+    document.getElementById(id).classList.toggle('active',id==='nav'+v.charAt(0).toUpperCase()+v.slice(1));
+  });
+
+  controls.autoRotate=false;
+
+  if(v==='solar'){
+    animateCameraTo(new THREE.Vector3(0,100,600), new THREE.Vector3(0,0,0), 2000);
+    bloomPass.strength=0.8;
+  }else if(v==='earth'){
+    const ep=earthGroup?earthGroup.position:new THREE.Vector3(300,0,0);
+    animateCameraTo(ep.clone().add(new THREE.Vector3(0,5,25)), ep, 2000);
+    buildDetailedEarth();
+    buildFireHotspots();
+    bloomPass.strength=0.5;
+  }else if(v==='terrain'){
+    flyTo(appState.selectedLat,appState.selectedLon,appState.selectedName);
+  }else if(v==='analysis'){
+    updateRiskPanel(appState.selectedLat,appState.selectedLon);
+  }
+}
+
+function flyTo(lat,lon,name){
+  appState.selectedLat=lat;
+  appState.selectedLon=lon;
+  appState.selectedName=name||`${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
+  document.getElementById('coordDisplay').textContent=`${lat.toFixed(2)}°N ${lon.toFixed(2)}°E`;
+
+  if(!earthGroup){setView('earth');return;}
+  setView('earth');
+
+  const er=PLANET_DATA[2].r;
+  const ep=earthGroup.position;
+  const surfPt=latLonToVec3(lat,lon,er);
+  const worldSurf=surfPt.clone().add(ep);
+
+  // Rotate earth so point faces camera
+  setTimeout(()=>{
+    const target=surfPt.clone().normalize();
+    const camDir=new THREE.Vector3(0,0,1);
+    const q=new THREE.Quaternion().setFromUnitVectors(target,camDir);
+    animateEarthRotation(q, 1500, ()=>{
+      const camPos=ep.clone().add(surfPt.clone().normalize().multiplyScalar(er+15));
+      animateCameraTo(camPos, worldSurf, 1500);
+      setTimeout(()=>{
+        updateRiskPanel(lat,lon);
+        applyWeatherAt(lat,lon);
+      },1600);
+    });
+  },200);
+}
+
+function animateEarthRotation(targetQ, duration, cb){
+  if(!earthMesh) return;
+  const startQ=earthMesh.quaternion.clone();
+  const start=performance.now();
+  function step(){
+    const t=Math.min((performance.now()-start)/duration,1);
+    const s=t<0.5?2*t*t:(−1+(4-2*t)*t);
+    earthMesh.quaternion.slerpQuaternions(startQ,targetQ,s);
+    if(t<1)requestAnimationFrame(step);else if(cb)cb();
+  }
+  requestAnimationFrame(step);
+}
+
+function animateCameraTo(targetPos,lookAt,dur=2000){
+  const startPos=camera.position.clone();
+  const startLook=controls.target.clone();
+  const start=performance.now();
+  controls.enabled=false;
+  function step(){
+    const t=Math.min((performance.now()-start)/dur,1);
+    const s=1-Math.pow(1-t,3);
+    camera.position.lerpVectors(startPos,targetPos,s);
+    controls.target.lerpVectors(startLook,lookAt,s);
+    controls.update();
+    if(t<1)requestAnimationFrame(step);
+    else{controls.enabled=true;}
+  }
+  requestAnimationFrame(step);
+}
+
+// ════════════════════════════════════════════════════════════
+//  RISK PANEL & METRICS
+// ════════════════════════════════════════════════════════════
+function computeRisk(){
+  const{wind,humidity,temperature}=appState;
+  const t=Math.max(0,(temperature-15)/40);
+  const h=Math.max(0,(100-humidity)/100);
+  const w=Math.min(wind/80,1);
+  return Math.min(99,Math.round((0.35*t+0.30*h+0.20*w+0.15*Math.random())*100));
+}
+
+function updateRiskPanel(lat,lon){
+  const risk=computeRisk();
+  const{wind,humidity,temperature}=appState;
+  const col=risk>=75?'#ff1a0a':risk>=55?'#ff6600':risk>=35?'#f5c518':'#22c55e';
+  const lbl=risk>=75?'EXTREME':risk>=55?'HIGH':risk>=35?'MODERATE':'LOW';
+
+  drawGauge(risk,col);
+  const badge=document.getElementById('riskBadge');
+  badge.textContent=`${risk} — ${lbl}`;
+  badge.style.cssText=`background:${col}22;border:1px solid ${col}55;color:${col};padding:4px 16px;border-radius:5px;font-size:9px;letter-spacing:2px;font-family:'Orbitron',monospace;margin-top:5px`;
+
+  document.getElementById('alertBanner').style.display=risk>=75?'block':'none';
+
+  const ndvi=0.05+Math.random()*0.4;
+  const frp=5+Math.random()*50;
+  const aqi=60+risk*2;
+  const metrics=[
+    {l:'TEMPERATURE',v:temperature+'°C',pct:((temperature+20)/75)*100,c:'#ff5030'},
+    {l:'HUMIDITY',v:humidity+'%',pct:humidity,c:'#4488ff'},
+    {l:'WIND SPEED',v:wind+' km/h',pct:(wind/120)*100,c:'#aa66ff'},
+    {l:'NDVI INDEX',v:ndvi.toFixed(2),pct:ndvi*100,c:'#22cc66'},
+    {l:'FRP (MW)',v:frp.toFixed(1),pct:(frp/80)*100,c:'#ffaa22'},
+    {l:'AIR QUALITY',v:aqi.toFixed(0)+' AQI',pct:(aqi/300)*100,c:'#ff6644'},
+  ];
+  document.getElementById('metricsBody').innerHTML=metrics.map(m=>`
+    <div class="metric-row">
+      <span class="metric-label">${m.l}</span>
+      <span class="metric-val" style="color:${m.c}">${m.v}</span>
+    </div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:${m.pct.toFixed(1)}%;background:${m.c}"></div></div>
+  `).join('');
+
+  updateWeatherPanel(lat,lon);
+}
+
+function drawGauge(score,color){
+  const gc=document.getElementById('gaugeCanvas');
+  const gx=gc.getContext('2d');
+  gx.clearRect(0,0,140,80);
+  const cx=70,cy=72,r=52;
+  gx.beginPath();gx.arc(cx,cy,r,Math.PI,Math.PI*2,false);
+  gx.strokeStyle='rgba(255,255,255,0.07)';gx.lineWidth=10;gx.stroke();
+  const end=Math.PI+(score/100)*Math.PI;
+  gx.beginPath();gx.arc(cx,cy,r,Math.PI,end,false);
+  gx.strokeStyle=color;gx.lineWidth=10;gx.lineCap='round';gx.stroke();
+  const ang=Math.PI+(score/100)*Math.PI;
+  gx.beginPath();gx.moveTo(cx,cy);
+  gx.lineTo(cx+(r-16)*Math.cos(ang),cy+(r-16)*Math.sin(ang));
+  gx.strokeStyle='#fff';gx.lineWidth=2;gx.lineCap='round';gx.stroke();
+  gx.beginPath();gx.arc(cx,cy,5,0,Math.PI*2);gx.fillStyle='#fff';gx.fill();
+  gx.fillStyle='#fff';gx.font='bold 22px Orbitron,monospace';gx.textAlign='center';
+  gx.fillText(score,cx,cy-8);
+}
+
+function updateWeatherPanel(lat,lon){
+  const weathers={
+    fire:{icon:'🔥',desc:'Active wildfire',temp:appState.temperature},
+    storm:{icon:'⛈',desc:'Severe thunderstorm',temp:Math.round(appState.temperature*0.7)},
+    snow:{icon:'❄',desc:'Heavy blizzard',temp:-8},
+    flood:{icon:'🌊',desc:'Flash flooding',temp:Math.round(appState.temperature*0.8)},
+    normal:{icon:'🌤',desc:'Clear skies',temp:Math.round(appState.temperature*0.6)},
+  };
+  const w=weathers[appState.weather]||weathers.normal;
+  document.getElementById('weatherBody').innerHTML=`
+    <div class="weather-row">
+      <div class="weather-icon">${w.icon}</div>
+      <div><div class="weather-temp">${w.temp}°C</div><div class="weather-desc">${w.desc}</div></div>
+    </div>
+    <div style="margin-top:8px;font-size:9px;color:#224455;letter-spacing:1px">
+      LAT ${lat.toFixed(2)}° · LON ${lon.toFixed(2)}°<br>
+      ${appState.selectedName.toUpperCase()}
+    </div>
+  `;
+}
+
+// ════════════════════════════════════════════════════════════
+//  WEATHER APPLICATION
+// ════════════════════════════════════════════════════════════
+function setWeather(type){
+  appState.weather=type;
+  document.querySelectorAll('.wmode-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('w'+type.charAt(0).toUpperCase()+type.slice(1))?.classList.add('active');
+  if(earthGroup) applyWeatherAt(appState.selectedLat,appState.selectedLon);
+}
+
+function applyWeatherAt(lat,lon){
+  if(!earthGroup) return;
+  const er=PLANET_DATA[2].r;
+  const pos=latLonToVec3(lat,lon,er+0.15).add(earthGroup.position);
+  currentWeatherPos=pos;
+  const fns={fire:buildFireVFX,storm:buildStormVFX,snow:buildSnowVFX,flood:buildFloodVFX,normal:clearWeather};
+  (fns[appState.weather]||clearWeather)(pos);
+}
+
+// ════════════════════════════════════════════════════════════
+//  CONTROLS
+// ════════════════════════════════════════════════════════════
+function updateEnv(){
+  appState.wind=+document.getElementById('windR').value;
+  appState.humidity=+document.getElementById('humR').value;
+  appState.temperature=+document.getElementById('tempR').value;
+  document.getElementById('windV').textContent=appState.wind+' km/h';
+  document.getElementById('humV').textContent=appState.humidity+'%';
+  document.getElementById('tempV').textContent=appState.temperature+'°C';
+}
+
+function searchCoords(){
+  const v=document.getElementById('coordInput').value.trim();
+  const parts=v.split(',');
+  if(parts.length>=2){
+    const lat=parseFloat(parts[0]),lon=parseFloat(parts[1]);
+    if(!isNaN(lat)&&!isNaN(lon)) flyTo(lat,lon,v);
+  }
+}
+
+function selectSat(i){
+  appState.selectedSat=i;
+  document.querySelectorAll('.sat-item').forEach((el,j)=>{
+    el.classList.toggle('sat-active',j===i);
+  });
+}
+
+function igniteLocation(){appState.simRunning=true;applyWeatherAt(appState.selectedLat,appState.selectedLon);}
+function resetSim(){appState.simRunning=false;clearWeather();}
+function toggleAutoSim(){appState.simRunning=!appState.simRunning;}
+
+window.setView=setView;window.flyTo=flyTo;window.setWeather=setWeather;
+window.updateEnv=updateEnv;window.searchCoords=searchCoords;
+window.selectSat=selectSat;window.igniteLocation=igniteLocation;
+window.resetSim=resetSim;window.toggleAutoSim=toggleAutoSim;
+
+document.getElementById('coordInput').addEventListener('keydown',e=>{
+  if(e.key==='Enter')searchCoords();
+});
+
+// ════════════════════════════════════════════════════════════
+//  MINIMAP
+// ════════════════════════════════════════════════════════════
+function updateMinimap(){
+  const mc=document.getElementById('minimapCanvas');
+  const mx=mc.getContext('2d');
+  mx.fillStyle='#000818';mx.fillRect(0,0,160,90);
+  mx.strokeStyle='rgba(0,100,200,0.3)';mx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    mx.beginPath();mx.moveTo(i*40,0);mx.lineTo(i*40,90);mx.stroke();
+    mx.beginPath();mx.moveTo(0,i*22.5);mx.lineTo(160,i*22.5);mx.stroke();
+  }
+  FIRE_DATA.forEach(f=>{
+    const x=((f.lon+180)/360)*160;
+    const y=((90-f.lat)/180)*90;
+    const col=f.risk>=75?'#ff1a0a':f.risk>=55?'#ff6600':'#f5c518';
+    mx.beginPath();mx.arc(x,y,2+f.frp/25,0,Math.PI*2);mx.fillStyle=col;mx.fill();
+  });
+  const sx=((appState.selectedLon+180)/360)*160;
+  const sy=((90-appState.selectedLat)/180)*90;
+  mx.beginPath();mx.arc(sx,sy,4,0,Math.PI*2);
+  mx.strokeStyle='#00ffcc';mx.lineWidth=1.5;mx.stroke();
+}
+
+// ════════════════════════════════════════════════════════════
+//  CLOCK
+// ════════════════════════════════════════════════════════════
+function updateClock(){
+  const n=new Date();
+  document.getElementById('utcClock').textContent=
+    n.toUTCString().slice(5,22)+' UTC';
+}
+setInterval(updateClock,1000);
+
+// ════════════════════════════════════════════════════════════
+//  MAIN RENDER LOOP
+// ════════════════════════════════════════════════════════════
+let t0=performance.now();
+
+function animate(){
+  requestAnimationFrame(animate);
+  const t=(performance.now()-t0)/1000;
+
+  // Rotate sun
+  if(sunMesh){
+    sunMesh.material.uniforms.time.value=t;
+    sunMesh.rotation.y=t*0.05;
+  }
+
+  // Orbit planets
+  planets.forEach(p=>{
+    p.angle+=p.data.speed*0.016;
+    p.mesh.position.x=Math.cos(p.angle)*p.data.d;
+    p.mesh.position.z=Math.sin(p.angle)*p.data.d;
+    p.mesh.rotation.y=t*0.5;
+  });
+
+  // Rotate earth
+  if(earthGroup){
+    earthGroup.rotation.y=t*0.1;
+    if(earthClouds)earthClouds.rotation.y=t*0.12;
+  }
+
+  // Satellites
+  updateSatellites(t);
+
+  // Fire hotspots pulse
+  updateHotspots(t);
+
+  // Weather VFX
+  updateWeatherParticles(t);
+
+  // Controls
+  controls.update();
+
+  // Minimap
+  updateMinimap();
+
+  // Render with bloom
+  composer.render();
+}
+
+// ════════════════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════════════════
+async function init(){
+  const status=document.getElementById('loaderStatus');
+
+  status.textContent='BUILDING STAR FIELD...';
+  buildStars();
+  buildMilkyWay();
+  await delay(400);
+
+  status.textContent='CREATING SOLAR SYSTEM...';
+  buildSun();
+  buildPlanets();
+  await delay(400);
+
+  status.textContent='INITIALIZING SATELLITES...';
+  buildSatellites();
+  await delay(300);
+
+  status.textContent='LOADING EARTH DATA...';
+  buildDetailedEarth();
+  buildFireHotspots();
+  await delay(300);
+
+  status.textContent='CONNECTING LIVE FEEDS...';
+  await delay(500);
+
+  status.textContent='SYSTEM READY';
+  await delay(400);
+
+  document.getElementById('loader').classList.add('hidden');
+  animate();
+  setView('solar');
+}
+
+function delay(ms){return new Promise(r=>setTimeout(r,ms));}
+
+init();
+</script>
+</body>
+</html>
